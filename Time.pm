@@ -63,6 +63,14 @@ I get a sufficient supply of tuits.
 #		Reimplement time conversion. Also modified the self-
 #		test to use a scratch file for the date modification
 #		portion of the test.
+# 0.003_01 28-Dec-2004	T. R. Wyant
+#		Close handles after use. In case of error, preserve
+#		the windows error around the close.
+# 0.004	13-Jan-2005	T. R. Wyant
+#		Fix export tags.
+#		Tweak "Bugs" section to more accurately represent what
+#			I think is going on.
+#		Release to CPAN.
 
 use strict;
 use warnings;
@@ -85,12 +93,12 @@ use Time::Local;
 use Win32::API;
 use Win32API::File qw{:ALL};
 
-$VERSION = 0.003;
+$VERSION = 0.004;
 
 @EXPORT_OK = qw{GetFileTime SetFileTime utime};
 %EXPORT_TAGS = (
-    ':all' => [@EXPORT_OK],
-    ':win' => [qw{GetFileTime SetFileTime}],
+    all => [@EXPORT_OK],
+    win => [qw{GetFileTime SetFileTime}],
     );
 
 =item ($atime, $mtime, $ctime) = GetFileTime ($filename);
@@ -112,9 +120,12 @@ $GetFileTime ||= _map ('KERNEL32', 'GetFileTime', [qw{N P P P}], 'I');
 my ($atime, $mtime, $ctime);
 $atime = $mtime = $ctime = pack 'LL', 0, 0;	# Preallocate 64 bits.
 $GetFileTime->Call ($fh, $ctime, $atime, $mtime) or do {
-    $^E = Win32::GetLastError ();
+    my $err = Win32::GetLastError ();
+    CloseHandle ($fh);
+    $^E = $err;
     return;
     };
+CloseHandle ($fh);
 return _filetime_to_perltime ($atime, $mtime, $ctime);
 }
 
@@ -145,10 +156,13 @@ $SetFileTime ||= _map ('KERNEL32', 'SetFileTime', [qw{N P P P}], 'I');
 my $fh = _get_handle ($fn, 1) or return;
 
 $SetFileTime->Call ($fh, $ctime, $atime, $mtime) or do {
-    $^E = Win32::GetLastError ();
+    my $err = Win32::GetLastError ();
+    CloseHandle ($fh);
+    $^E = $err;
     return;
     };
 
+CloseHandle ($fh);
 return 1;
 }
 
@@ -304,14 +318,21 @@ return wantarray ? @result : $result[0];
        Tweak documentation. No code changes.
  0.003 Correct time conversion.
        Modify test to not change own date.
+ 0.004 Close handles after use. Thanks to Chris
+           Camejo for pointing out the leak.
+       Fix export tags to agree with docs.
+       Tweak "BUGS" documentation.
 
 =head1 BUGS
 
-Sometimes the access time returned by GetFileTime is a few
-seconds different than the access time returned by the stat
-built-in. I have no explanation for this. The built-in stat
-seems to be based on the "C" run-time stat (); what that's
-doing I know not.
+As implemented, GetFileTime () constitutes an access, and
+therefore updates the access time.
+
+The stat () builtin, on the other hand, doesn't report
+an access time change even after GetFileTime () has been
+used. In fact, it looks to me very much like stat () reports
+the modification time in element [8] of the list, but I
+find this nowhere documented.
 
 =head1 ACKNOWLEDGMENTS
 
@@ -341,7 +362,7 @@ Thomas R. Wyant, III (F<Thomas.R.Wyant-III@usa.dupont.com>)
 
 =head1 COPYRIGHT
 
-Copyright 2004 by
+Copyright 2004, 2005 by
 E. I. DuPont de Nemours and Company, Inc.
 All rights reserved.
 

@@ -10,7 +10,7 @@ WriteMakefile (
 	VERSION_FROM => 'Time.pm',
 	PREREQ_PM => {
 			'Win32::API' => 0.01,
-			'Win32API::File' => 0.09,
+			'Win32API::File' => 0.08,
 			},
 #	'linkext' => {LINKTYPE => ''},
 	'dist' => {COMPRESS => 'gzip', SUFFIX => 'gz'},
