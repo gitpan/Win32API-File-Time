@@ -40,7 +40,11 @@ supported:
  :all => exports everything exportable
  :win => exports GetFileTime and SetFileTime
 
-Wide system calls are implemented but not currently supported.
+Wide system calls are implemented (based on the truth of
+${^WIDE_SYSTEM_CALLS}) but not currently supported. In
+other words: I wrote the code, but haven't tested it and don't
+have any plans to. Feedback will be accepted, and implemented when
+I get a sufficient supply of tuits.
 
 =over 4
 
@@ -50,6 +54,11 @@ Wide system calls are implemented but not currently supported.
 
 # 0.001	13-May-2004	T. R. Wyant
 #		Initial version.
+# 0.002	02-Oct-2004	T. R. Wyant
+#		No code changes. Add the readme file to the manifest,
+#		and add the dependencies to Makefile.PL, since they
+#		really _should_ be there, and Active State is
+#		complaining about them missing.
 
 use strict;
 use warnings;
@@ -70,7 +79,7 @@ use Time::Local;
 use Win32::API;
 use Win32API::File qw{:ALL};
 
-$VERSION = 0.001;
+$VERSION = 0.002;
 
 @EXPORT_OK = qw{GetFileTime SetFileTime utime};
 %EXPORT_TAGS = (
@@ -266,6 +275,8 @@ return wantarray ? @result : $result[0];
 =head1 HISTORY
 
  0.001 Initial release
+ 0.002 Correct MANIFEST and Makefile.PL dependencies.
+       Tweak documentation. No code changes.
 
 =head1 BUGS
 
@@ -280,6 +291,8 @@ doing I know not.
 This module would not exist without the following people:
 
 Aldo Calpini, who gave us Win32::API.
+
+Tye McQueen, who gave us Win32API::File.
 
 Jenda Krynicky, whose "How2 create a PPM distribution"
 (F<http://jenda.krynicky.cz/perl/PPM.html>) gave me a leg up on

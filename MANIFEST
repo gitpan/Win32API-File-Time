@@ -1,6 +1,8 @@
 Makefile.PL
 MANIFEST
+Readme
+t/basic.t
 Time.pm
 touch.pl
-t/basic.t
 
+META.yml                                 Module meta-data (added by MakeMaker)
