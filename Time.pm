@@ -11,7 +11,7 @@ Win32API::File::Time - Set file times, even on open or readonly files.
 or
 
  use Win32API::File::Time qw{utime};
- utime ($atime, $mtime, $filename) or die $^E;
+ utime $atime, $mtime, $filename or die $^E;
 
 =head1 DESCRIPTION
 
@@ -24,7 +24,7 @@ that this is the intended functionality, at least for read-only
 files.
 
 This module will modify the time on both open files and read-only
-files. I<Caveat implementor.>
+files. I<Caveat user.>
 
 This module is based on the SetFileTime function in kernel32.dll.
 Perl's utime built-in also makes explicit use of this function if
@@ -59,6 +59,10 @@ I get a sufficient supply of tuits.
 #		and add the dependencies to Makefile.PL, since they
 #		really _should_ be there, and Active State is
 #		complaining about them missing.
+# 0.003	17-Dec-2004	T. R. Wyant
+#		Reimplement time conversion. Also modified the self-
+#		test to use a scratch file for the date modification
+#		portion of the test.
 
 use strict;
 use warnings;
@@ -69,7 +73,9 @@ use base qw{Exporter};
 use vars qw{@EXPORT_OK %EXPORT_TAGS $VERSION};
 use vars qw{
 	$FileTimeToSystemTime
+	$FileTimeToLocalFileTime
 	$GetFileTime
+	$LocalFileTimeToFileTime
 	$SetFileTime
 	$SystemTimeToFileTime
 	};
@@ -79,7 +85,7 @@ use Time::Local;
 use Win32::API;
 use Win32API::File qw{:ALL};
 
-$VERSION = 0.002;
+$VERSION = 0.003;
 
 @EXPORT_OK = qw{GetFileTime SetFileTime utime};
 %EXPORT_TAGS = (
@@ -178,11 +184,20 @@ return $num;
 #	This subroutine takes as input a number of Windows file times
 #	and converts them to Perl times.
 #
+#	The algorithm is due to the unsung heros at Hip Communications
+#	Inc (currently known as ActiveState), who found a way around
+#	the fact that Perl and Windows have a fundamentally different
+#	idea of what local time corresponds to a given GMT when summer
+#	time was in effect at the given GMT, but not at the time the
+#	conversion is made. The given algorighm is consistent with the
+#	results of the stat () function.
 
 sub _filetime_to_perltime {
 my @result;
 $FileTimeToSystemTime ||= _map (
 	'KERNEL32', 'FileTimeToSystemTime', [qw{P P}], 'I');
+$FileTimeToLocalFileTime ||= _map (
+	'KERNEL32', 'FileTimeToLocalFileTime', [qw{P P}], 'I');
 my $st = pack 'ssssssss', 0, 0, 0, 0, 0, 0, 0, 0;
 foreach my $ft (@_) {
     my ($low, $high) = unpack 'LL', $ft;
@@ -190,10 +205,15 @@ foreach my $ft (@_) {
 	push @result, undef;
 	next;
 	};
-    $FileTimeToSystemTime->Call ($ft, $st);
+    my $lf = $ft;	# Just to get the space allocated.
+    $FileTimeToLocalFileTime->Call ($ft, $lf) &&
+	$FileTimeToSystemTime->Call ($lf, $st) or do {
+	push @result, undef;
+	next;
+	};
     my @tm = unpack 'ssssssss', $st;
     push @result, $tm[0] > 0 ?
-	timegm (@tm[6, 5, 4, 3], $tm[1] - 1, $tm[0]) :
+	timelocal (@tm[6, 5, 4, 3], $tm[1] - 1, $tm[0]) :
 	undef;
     }
 return wantarray ? @result : $result[0];
@@ -249,26 +269,31 @@ return Win32::API->new (@_) ||
 #
 #	This subroutine converts perl times to Windows file times.
 
+#	The same considerations apply to the algorithm used here as to
+#	the one used in _filetime_to_perltime.
+
 sub _perltime_to_filetime {
 my @result;
 $SystemTimeToFileTime ||= _map (
 	'KERNEL32', 'SystemTimeToFileTime', [qw{P P}], 'I');
-my $ft = pack 'LL', 0, 0;
+$LocalFileTimeToFileTime ||= _map (
+	'KERNEL32', 'LocalFileTimeToFileTime', [qw{P P}], 'I');
+my $zero = pack 'LL', 0, 0;	# To get a quadword zero.
+my ($ft, $lf) = ($zero, $zero);	# To get the space allocated.
 foreach my $pt (@_) {
     if (defined $pt) {
-	my @tm = gmtime ($pt);
+	my @tm = localtime ($pt);
 	my $st = pack 'ssssssss', $tm[5] + 1900, $tm[4] + 1, 0,
 	    @tm[3, 2, 1, 0], 0;
-	$SystemTimeToFileTime->Call ($st, $ft);
-	push @result, $ft;
+	push @result, $SystemTimeToFileTime->Call ($st, $lf)  &&
+	    $LocalFileTimeToFileTime->Call ($lf, $ft) ? $ft : $zero;
 	}
       else {
-	push @result, 0;
+	push @result, $zero;
 	}
     }
 return wantarray ? @result : $result[0];
 }
-
 
 =back
 
@@ -277,6 +302,8 @@ return wantarray ? @result : $result[0];
  0.001 Initial release
  0.002 Correct MANIFEST and Makefile.PL dependencies.
        Tweak documentation. No code changes.
+ 0.003 Correct time conversion.
+       Modify test to not change own date.
 
 =head1 BUGS
 
@@ -298,13 +325,14 @@ Jenda Krynicky, whose "How2 create a PPM distribution"
 (F<http://jenda.krynicky.cz/perl/PPM.html>) gave me a leg up on
 both PPM and tar distributions.
 
-Rob Casey, the author of the similar module Win32::FileTime, which
-taught me how to manipulate the blasted times once I got them.
+The folks of ActiveState (F<http://www.activestate.com/>,
+formerly known as Hip Communications), who found a way to reconcile
+Windows' and Perl's subtly different ideas of what time it is.
 
-Last, in the place of honor, the folks of Cygwin
-(F<http://www.cygwin.com/>), especially those who worked on times.cc
-in the Cygwin core. This is the B<only> implementation of utime I
-could find which did what B<I> wanted it to do.
+The folks of Cygwin (F<http://www.cygwin.com/>), especially those
+who worked on times.cc in the Cygwin core. This is the B<only>
+implementation of utime I could find which did what B<I> wanted
+it to do.
 
 
 =head1 AUTHOR

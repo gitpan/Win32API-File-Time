@@ -33,6 +33,7 @@ Update the access and modification times of each FILE to the current time.
                            'modify' and' 'mtime' are the same as -m
                            you can specify this more than once
   -help                  display this help and exit
+  -test                  display all times, but don't change any
   -verbose               display the names of files as they are modified
   -version               display version information and exit
 
@@ -50,7 +51,10 @@ eod
 
 use FileHandle;
 use Getopt::Long;
-use Win32API::File::Time qw{SetFileTime};
+use POSIX qw{strftime};
+use Win32API::File::Time qw{GetFileTime SetFileTime};
+
+use constant TIME_FMT => '%d-%b-%Y %H:%M:%S';
 
 my %opt = (
     verbose => 0,
@@ -66,6 +70,7 @@ GetOptions (\%opt, qw{
 	m
 	reference=s
 	t=s
+	test
 	time=s@
 	verbose+
 	version}) or die USAGE;
@@ -133,7 +138,20 @@ $opt{creation} or $ctime = undef;
 foreach my $fn (@ARGV) {
     -e $fn or do {
 	next if $opt{c};
-	FileHandle->new ("<$fn");
+	FileHandle->new (">$fn") or die <<eod;
+Error - Unable to create $fn
+        $!
+eod
+	};
+    $opt{test} and do {
+	($atime, $mtime, $ctime) = GetFileTime ($fn);
+	print <<eod;
+Testing - $fn
+    Accessed: @{[strftime TIME_FMT, localtime $atime]}
+    Modified: @{[strftime TIME_FMT, localtime $mtime]}
+     Created: @{[strftime TIME_FMT, localtime $ctime]}
+eod
+	next;
 	};
     $opt{verbose} and print <<eod;
 $fn

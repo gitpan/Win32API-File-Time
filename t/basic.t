@@ -2,7 +2,9 @@
 
 use strict;
 use warnings;
+use File::Basename;
 use File::Spec;
+use FileHandle;
 use POSIX qw{strftime};
 use Test;
 
@@ -40,36 +42,45 @@ $rslt ? pftime ($atime, $mtime, $ctime) : print <<eod;
 # $^E
 eod
 
+my $testfile = File::Spec->catfile ($ENV{TEMP} || $ENV{TMP}, 'Win32API-File-Time.tmp');
+my $skip = FileHandle->new (">$testfile") ? '' : "Unable to create $testfile";
+
 $test_num++;
-print "# Test $test_num - Set the access and modification with SetFileTime.\n";
+print <<eod;
+# Test $test_num - Set the access and modification with SetFileTime.
+#     File $testfile
+eod
 my $now = time () - 5;
-$rslt = SetFileTime ($me, $now, $now) and do {
-    my ($patim, $pmtim, $pctim);
+($patim, $pmtim, $pctim) = (undef, undef, undef);
+$skip or $rslt = SetFileTime ($testfile, $now, $now) and do {
     (undef, undef, undef, undef, undef, undef, undef, undef,
-	$patim, $pmtim, $pctim, undef, undef) = stat ($me);
+	$patim, $pmtim, $pctim, undef, undef) = stat ($testfile);
     $rslt = $pmtim == $now;	# Don't test atime, because of resolution.
     };
-ok ($rslt);
-$rslt or print <<eod;
+skip ($skip, $rslt);
+$skip or $rslt or print <<eod;
 # SetFileTime failed.
 # $^E
+# desired mod time: $now = @{[strftime $df, localtime $now]}.
+#  actual mod time: @{[defined $pmtim ? "$pmtim = @{[strftime $df, localtime $pmtim]}" : 'undef']}
 eod
 
 $test_num++;
 print "# Test $test_num - Set the access and modification with utime.\n";
 $now += 5;
-$rslt = utime $now, $now, $me and do {
-    my ($patim, $pmtim, $pctim);
+($patim, $pmtim, $pctim) = (undef, undef, undef);
+$skip or $rslt = utime $now, $now, $testfile and do {
     (undef, undef, undef, undef, undef, undef, undef, undef,
-	$patim, $pmtim, $pctim, undef, undef) = stat ($me);
+	$patim, $pmtim, $pctim, undef, undef) = stat ($testfile);
     $rslt = $pmtim == $now;	# Don't test atime, because of resolution.
     };
-ok ($rslt);
-$rslt or print <<eod;
+skip ($skip, $rslt);
+$skip or $rslt or print <<eod;
 # utime failed.
 # $^E
 eod
 
+$skip or unlink $testfile;
 
 sub pftime {
 my ($sat, $smt, $sct) = map {strftime $df, localtime $_} @_;
