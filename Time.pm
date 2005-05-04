@@ -23,8 +23,8 @@ open file, nor a read-only file. The comments in win32.c indicate
 that this is the intended functionality, at least for read-only
 files.
 
-This module will modify the time on both open files and read-only
-files. I<Caveat user.>
+This module will read and modify the time on open files, read-only
+files, and directories. I<Caveat user.>
 
 This module is based on the SetFileTime function in kernel32.dll.
 Perl's utime built-in also makes explicit use of this function if
@@ -41,10 +41,10 @@ supported:
  :win => exports GetFileTime and SetFileTime
 
 Wide system calls are implemented (based on the truth of
-${^WIDE_SYSTEM_CALLS}) but not currently supported. In
-other words: I wrote the code, but haven't tested it and don't
-have any plans to. Feedback will be accepted, and implemented when
-I get a sufficient supply of tuits.
+${^WIDE_SYSTEM_CALLS}) but not currently supported. In other words: I
+wrote the code, but haven't tested it and don't have any plans to.
+Feedback will be accepted, and implemented when I get a sufficient
+supply of tuits.
 
 =over 4
 
@@ -71,6 +71,16 @@ I get a sufficient supply of tuits.
 #		Tweak "Bugs" section to more accurately represent what
 #			I think is going on.
 #		Release to CPAN.
+# 0.004_01 28-Apr-2005	T. R. Wyant
+#		Assert FILE_FLAG_BACKUP_SEMANTICS when reading times,
+#			so that it works for directories under XP and
+#			2003 server.
+#		Centralize code to close handles on error.
+# 0.004_02 04-May-2005	T. R. Wyant
+#		Document behaviour of FAT (and change test to
+#		accomodate.
+# 0.005 04-May-2005	T. R. Wyant
+#		Release to CPAN.
 
 use strict;
 use warnings;
@@ -93,7 +103,7 @@ use Time::Local;
 use Win32::API;
 use Win32API::File qw{:ALL};
 
-$VERSION = 0.004;
+$VERSION = 0.005;
 
 @EXPORT_OK = qw{GetFileTime SetFileTime utime};
 %EXPORT_TAGS = (
@@ -119,12 +129,8 @@ my $fh = _get_handle ($fn) or return;
 $GetFileTime ||= _map ('KERNEL32', 'GetFileTime', [qw{N P P P}], 'I');
 my ($atime, $mtime, $ctime);
 $atime = $mtime = $ctime = pack 'LL', 0, 0;	# Preallocate 64 bits.
-$GetFileTime->Call ($fh, $ctime, $atime, $mtime) or do {
-    my $err = Win32::GetLastError ();
-    CloseHandle ($fh);
-    $^E = $err;
-    return;
-    };
+$GetFileTime->Call ($fh, $ctime, $atime, $mtime) or
+    return _close_handle ($fh);
 CloseHandle ($fh);
 return _filetime_to_perltime ($atime, $mtime, $ctime);
 }
@@ -155,12 +161,8 @@ my $ctime = _perltime_to_filetime (shift);
 $SetFileTime ||= _map ('KERNEL32', 'SetFileTime', [qw{N P P P}], 'I');
 my $fh = _get_handle ($fn, 1) or return;
 
-$SetFileTime->Call ($fh, $ctime, $atime, $mtime) or do {
-    my $err = Win32::GetLastError ();
-    CloseHandle ($fh);
-    $^E = $err;
-    return;
-    };
+$SetFileTime->Call ($fh, $ctime, $atime, $mtime) or
+    return _close_handle ($fh);
 
 CloseHandle ($fh);
 return 1;
@@ -193,6 +195,20 @@ return $num;
 #
 #	Internal subroutines
 #
+#	_close_handle
+#
+#	This subroutine closes the given handle, preserving status
+#	around the call.
+
+sub _close_handle {
+my $fh = shift;
+my $err = Win32::GetLastError ();
+CloseHandle ($fh);
+$^E = $err;
+return;
+}
+
+
 #	_filetime_to_perltime
 #
 #	This subroutine takes as input a number of Windows file times
@@ -203,7 +219,7 @@ return $num;
 #	the fact that Perl and Windows have a fundamentally different
 #	idea of what local time corresponds to a given GMT when summer
 #	time was in effect at the given GMT, but not at the time the
-#	conversion is made. The given algorighm is consistent with the
+#	conversion is made. The given algorithm is consistent with the
 #	results of the stat () function.
 
 sub _filetime_to_perltime {
@@ -251,7 +267,7 @@ ${^WIDE_SYSTEM_CALLS} ?
 	($write ? FILE_SHARE_WRITE | FILE_SHARE_READ : FILE_SHARE_READ),
 	[],
 	OPEN_EXISTING,
-	($write ? FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS : 0),
+	($write ? FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS : FILE_FLAG_BACKUP_SEMANTICS),
 	0,
 	) :
     CreateFile ($fn,
@@ -259,7 +275,7 @@ ${^WIDE_SYSTEM_CALLS} ?
 	($write ? FILE_SHARE_WRITE | FILE_SHARE_READ : FILE_SHARE_READ),
 	[],
 	OPEN_EXISTING,
-	($write ? FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS : 0),
+	($write ? FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS : FILE_FLAG_BACKUP_SEMANTICS),
 	0,
 	)
   or do {
@@ -322,6 +338,14 @@ return wantarray ? @result : $result[0];
            Camejo for pointing out the leak.
        Fix export tags to agree with docs.
        Tweak "BUGS" documentation.
+ 0.005 Assert FILE_FLAG_BACKUP_SEMANTICS when reading
+           times, so that it works for directories
+           under XP and 2003 server. Thanks to Leigh
+           Power for pointing out the problem and
+           suggesting the solution.
+       Document FAT, and accomodate it in self-test.
+           Thanks again, Leigh.
+       Centralize code to close handles on error.
 
 =head1 BUGS
 
@@ -333,6 +357,10 @@ an access time change even after GetFileTime () has been
 used. In fact, it looks to me very much like stat () reports
 the modification time in element [8] of the list, but I
 find this nowhere documented.
+
+FAT file time resolution is 2 seconds at best, as documented
+at F<http://support.microsoft.com/default.aspx?scid=kb;en-us;127830>.
+Access time resolution seems to be to the nearest day.
 
 =head1 ACKNOWLEDGMENTS
 

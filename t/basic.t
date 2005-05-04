@@ -1,7 +1,10 @@
 #!/usr/bin/perl
 
+local $^W = 0;
+
 use strict;
 use warnings;
+
 use File::Basename;
 use File::Spec;
 use FileHandle;
@@ -50,30 +53,37 @@ print <<eod;
 # Test $test_num - Set the access and modification with SetFileTime.
 #     File $testfile
 eod
-my $now = time () - 5;
+my $now = time () - 10;
+$now = $now - $now % 2;	# FAT only only stores to nearest two seconds.
 ($patim, $pmtim, $pctim) = (undef, undef, undef);
 $skip or $rslt = SetFileTime ($testfile, $now, $now) and do {
     (undef, undef, undef, undef, undef, undef, undef, undef,
 	$patim, $pmtim, $pctim, undef, undef) = stat ($testfile);
     $rslt = $pmtim == $now;	# Don't test atime, because of resolution.
     };
+$skip or print <<eod;
+# desired mod time: $now = @{[strftime $df, localtime $now]}.
+#  actual mod time: @{[defined $pmtim ? "$pmtim = @{[strftime $df, localtime $pmtim]}" : 'undef']}
+eod
 skip ($skip, $rslt);
 $skip or $rslt or print <<eod;
 # SetFileTime failed.
 # $^E
-# desired mod time: $now = @{[strftime $df, localtime $now]}.
-#  actual mod time: @{[defined $pmtim ? "$pmtim = @{[strftime $df, localtime $pmtim]}" : 'undef']}
 eod
 
 $test_num++;
 print "# Test $test_num - Set the access and modification with utime.\n";
-$now += 5;
+$now += 10;
 ($patim, $pmtim, $pctim) = (undef, undef, undef);
 $skip or $rslt = utime $now, $now, $testfile and do {
     (undef, undef, undef, undef, undef, undef, undef, undef,
 	$patim, $pmtim, $pctim, undef, undef) = stat ($testfile);
     $rslt = $pmtim == $now;	# Don't test atime, because of resolution.
     };
+$skip or print <<eod;
+# desired mod time: $now = @{[strftime $df, localtime $now]}.
+#  actual mod time: @{[defined $pmtim ? "$pmtim = @{[strftime $df, localtime $pmtim]}" : 'undef']}
+eod
 skip ($skip, $rslt);
 $skip or $rslt or print <<eod;
 # utime failed.

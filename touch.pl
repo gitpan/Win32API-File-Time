@@ -23,7 +23,9 @@ Update the access and modification times of each FILE to the current time.
   -creation              change the creation time
   -no-create             synonym for -c
   -date STRING           parse STRING with Date::Manip and use it instead of
-                           the current time
+                           the current time. Appears to have problems when
+                           dealing with normal time during summer time, or
+                           vice versa.
   -f                     ignored
   -m                     change the modification time
   -reference FILE        use this file's times instead of the current time
@@ -52,6 +54,7 @@ eod
 use FileHandle;
 use Getopt::Long;
 use POSIX qw{strftime};
+use Time::Local;
 use Win32API::File::Time qw{GetFileTime SetFileTime};
 
 use constant TIME_FMT => '%d-%b-%Y %H:%M:%S';
@@ -113,7 +116,7 @@ $opt{a} = $opt{m} = 1 unless $opt{a} || $opt{m} || $opt{creation};
 my ($atime, $mtime, $ctime);
 $opt{date} and do {
     require Date::Manip;
-    $atime = $mtime = $ctime = UnixDate ($opt{date}, '%s');
+    $atime = $mtime = $ctime = Date::Manip::UnixDate ($opt{date}, '%s');
     };
 !$atime && $opt{t} and do {
     $opt{t} =~ m/^(\d{8,12})(\.(\d{2}))?$/ or die <<eod;
@@ -123,7 +126,7 @@ eod
     push @time, $3 || 0;
     my $mins = $1;
     $mins =~ s/(\d{2})(\d{2})(\d{2})(\d{2})$//;
-    push @time, $4, $3, $2, $1, $mins || (localtime)[5];
+    push @time, $4, $3, $2, $1 - 1, $mins || (localtime)[5];
     $atime = $mtime = $ctime = timelocal (@time);
     };
 !$atime && $opt{reference} and do {
