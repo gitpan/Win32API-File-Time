@@ -1,8 +1,12 @@
+Build.PL
+Changes
+eg/README
+eg/touch.pl
+lib/Win32API/File/Time.pm
 Makefile.PL
 MANIFEST
-Readme
+META.yml
+README
 t/basic.t
-Time.pm
-touch.pl
-
-META.yml                                 Module meta-data (added by MakeMaker)
+t/pod.t
+t/pod_coverage.t

@@ -1,5 +1,3 @@
-#!/usr/bin/perl
-
 local $^W = 0;
 
 use strict;
@@ -13,7 +11,16 @@ use Test;
 
 my $test_num = 1;
 my $loaded;
-BEGIN { $| = 1; plan (tests => 4);
+BEGIN {
+    if ($ENV{DEVELOPER_TEST} && !eval {
+	    require Win32::API;
+	    require Win32API::File;
+	    1;
+	}) {
+	print "1..0 # skip Win32::API and Win32API::File not available.\n";
+	exit;
+    }
+    $| = 1; plan (tests => 4);
     print "# Test 1 - Loading the library.\n"}
 END {print "not ok 1\n" unless $loaded;}
 use Win32API::File::Time qw{GetFileTime SetFileTime utime};
@@ -32,13 +39,25 @@ defined $patim ? pftime ($patim, $pmtim, $pctim) : print <<eod;
 #         $!
 #         $^E
 eod
-
+print "#\n";
 
 $test_num++;
 my $rslt;
 print "# Test $test_num - Get file times.\n";
 my ($atime, $mtime, $ctime) = GetFileTime ($me);
-$rslt = $mtime == $pmtim && $ctime == $pctim;
+print <<eod;
+#           Win32API::File::Time  stat
+# Accessed: @{[strftime $df, localtime $atime]}  @{[
+	strftime $df, localtime $patim]}
+#  Created: @{[strftime $df, localtime $ctime]}  @{[
+	strftime $df, localtime $pctim]}
+eod
+$pctim or print <<eod;
+# stat() returned 0 for creation time. Creation time will not be
+# included in the test.
+eod
+# stat() returns 0 under wine, at least in ActivePerl.
+$rslt = $mtime == $pmtim && (!$pctim || $ctime == $pctim);
 ok ($rslt);
 $rslt ? pftime ($atime, $mtime, $ctime) : print <<eod;
 # GetFileTime failed.
